@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw AI Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #0f172a; color: #f8fafc; overflow: hidden; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); position: relative; }
+        
+        /* FIX LẤP CHỮ: Watermark nằm ở Layer -1 */
+        .status-watermark { 
+            position: absolute; right: 10px; bottom: 5px; 
+            font-size: 3.5rem; font-weight: 900; opacity: 0.05; 
+            z-index: 0; pointer-events: none; text-transform: uppercase; 
+        }
+        .kpi-content { position: relative; z-index: 10; }
+
+        .sidebar-btn { transition: all 0.3s; border-left: 4px solid transparent; }
+        .sidebar-btn.active { background: rgba(59, 130, 246, 0.1); border-left-color: #3b82f6; color: #3b82f6; }
+        
+        .camera-ui { position: absolute; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; border-radius: 1.5rem; }
+        .scan-anim { width: 100%; height: 2px; background: #a855f7; position: absolute; animation: scanning 2s infinite; }
+        @keyframes scanning { 0% { top: 10%; } 100% { top: 90%; } }
+    </style>
+</head>
+<body class="flex h-screen">
+
+    <aside class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col p-6 shrink-0">
+        <div class="mb-10 flex items-center space-x-3">
+            <div class="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20"><i class="fas fa-shield-virus text-white"></i></div>
+            <span class="text-xl font-extrabold italic tracking-tighter text-white">OpenClaw <span class="text-blue-500 text-xs">AI Hub</span></span>
+        </div>
+
+        <div class="mb-8">
+            <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Chế độ người dùng</label>
+            <select id="roleSelect" onchange="initRBAC(this.value)" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-blue-400 outline-none">
+                <option value="doctor">Bác sỹ (Điều trị)</option>
+                <option value="patient">Bệnh nhân (Theo dõi)</option>
+                <option value="admin">Quản trị viên (Hệ thống)</option>
+            </select>
+        </div>
+
+        <div id="sidebarDynamic" class="flex-1 overflow-y-auto space-y-4">
+            </div>
+
+        <div class="mt-6 pt-6 border-t border-slate-800 flex items-center space-x-3">
+            <div id="userAvatar" class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs">BS</div>
+            <div class="overflow-hidden">
+                <p id="userName" class="text-xs font-bold truncate">BS. Nguyễn Hoàng Quân</p>
+                <p id="userRole" class="text-[10px] text-slate-500 uppercase">Hệ thống HIS/LIS</p>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 p-8 overflow-y-auto relative">
+        
+        <div id="cameraUI" class="camera-ui m-8">
+            <div class="scan-anim"></div>
+            <i class="fas fa-bullseye text-5xl text-purple-500 mb-6 animate-pulse"></i>
+            <h2 class="text-xl font-bold text-purple-400 mb-2">VISION AI SCANNING...</h2>
+            <p class="text-slate-400 text-xs mb-8">Đang phân tích chỉ số GI (Glycemic Index) của thực phẩm</p>
+            <button onclick="closeVision()" class="px-6 py-2 bg-slate-700 rounded-xl text-xs font-bold">HỦY BỎ</button>
+        </div>
+
+        <header class="flex justify-between items-start mb-10">
+            <div>
+                <h1 id="headerTitle" class="text-3xl font-black italic tracking-tighter">Bệnh nhân: Nguyễn Văn A</h1>
+                <p id="headerSub" class="text-slate-500 text-sm">Thiết bị: <span class="text-blue-500 font-bold">Libre 3 (BLE Hub)</span></p>
+            </div>
+            <div id="actionButtons" class="flex space-x-3">
+                </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            <div id="gluCard" class="glass-card p-6 rounded-3xl min-h-[170px] flex flex-col justify-between transition-all duration-500 border-2 border-transparent">
+                <div class="kpi-content">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Đường huyết (mmol/L)</p>
+                    <div class="text-7xl font-black tracking-tighter mt-2" id="valMmol">6.9</div>
+                </div>
+                <div id="watermark" class="status-watermark">ỔN ĐỊNH</div>
+                <p class="text-[10px] font-mono text-slate-500 z-10" id="valMgdl">125 mg/dL</p>
+            </div>
+
+            <div class="glass-card p-6 rounded-3xl min-h-[170px] flex flex-col justify-between">
+                <div class="kpi-content">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nhịp tim (BPM)</p>
+                    <div class="text-6xl font-black text-red-500 mt-2" id="valHr">72</div>
+                </div>
+                <p class="text-[10px] text-slate-500"><i class="fas fa-wave-square mr-1 animate-pulse"></i> Sensor Active</p>
+            </div>
+
+            <div id="visionCard" class="glass-card p-6 rounded-3xl min-h-[170px] border-purple-500/30 bg-purple-500/5">
+                <p class="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-4">Vision AI Event</p>
+                <div id="visionData">
+                    <h4 class="text-lg font-bold text-white italic" id="foodName">N/A</h4>
+                    <p class="text-[10px] text-slate-400 mt-1" id="foodDetail">Chờ dữ liệu camera...</p>
+                </div>
+            </div>
+
+            <div id="aiCard" class="p-6 rounded-3xl bg-slate-800 border border-slate-700 shadow-2xl transition-all duration-500">
+                <p class="text-[10px] font-bold text-slate-500 uppercase mb-4 tracking-widest">AI Agent Context</p>
+                <div id="aiContent">
+                    <h3 class="text-lg font-bold mb-1 text-green-400" id="aiStatus">An toàn</h3>
+                    <p class="text-[11px] text-slate-400 leading-relaxed" id="aiMsg">Chỉ số nằm trong ngưỡng WHO (3.9 - 10.0).</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-card p-8 rounded-3xl">
+            <h3 class="font-bold text-lg mb-6 italic">Biến thiên Đa phương thức (CGM + HR + Food)</h3>
+            <canvas id="mainChart" height="90"></canvas>
+        </div>
+    </main>
+
+    <script>
+        let currentChart;
+        const patients = {
+            'Nguyễn Văn A': { mmol: 6.9, hr: 72, food: 'Chưa có', gHistory: [7.2, 7.8, 6.5, 6.9, 7.1, 6.9], hrHistory: [70, 72, 75, 72, 70, 72] },
+            'Trần Thị B': { mmol: 12.5, hr: 80, food: 'Phở Bò (75g Carb)', gHistory: [10.5, 11.2, 13.0, 12.5, 12.0, 12.5], hrHistory: [72, 75, 78, 80, 79, 80] },
+            'Lê Văn C': { mmol: 3.5, hr: 125, food: 'Chưa có', gHistory: [5.5, 4.8, 4.2, 3.8, 3.2, 3.5], hrHistory: [75, 80, 95, 135, 130, 125] }
+        };
+
+        function initRBAC(role) {
+            const sidebar = document.getElementById('sidebarDynamic');
+            const actions = document.getElementById('actionButtons');
+            const avatar = document.getElementById('userAvatar');
+            const nameLabel = document.getElementById('userName');
+
+            sidebar.innerHTML = '';
+            actions.innerHTML = '';
+
+            if (role === 'doctor') {
+                avatar.innerText = 'BS'; nameLabel.innerText = 'BS. Nguyễn Hoàng Quân';
+                sidebar.innerHTML = `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bệnh nhân theo dõi</p>` + 
+                    Object.keys(patients).map(p => `<div onclick="loadPatient('${p}')" class="sidebar-btn p-3 rounded-xl cursor-pointer hover:bg-slate-800 text-sm font-bold flex justify-between"><span>${p}</span><i class="fas fa-chevron-right text-[10px] opacity-30"></i></div>`).join('');
+                actions.innerHTML = `<button onclick="openVision()" class="bg-purple-600 px-5 py-2 rounded-xl text-[10px] font-bold shadow-lg shadow-purple-500/20"><i class="fas fa-camera mr-2"></i>VISION AI</button>
+                                     <button onclick="pushHIS()" class="bg-blue-600 px-5 py-2 rounded-xl text-[10px] font-bold"><i class="fas fa-sync mr-2"></i>PUSH HIS/LIS</button>`;
+                loadPatient('Nguyễn Văn A');
+            } 
+            else if (role === 'patient') {
+                avatar.innerText = 'NA'; nameLabel.innerText = 'Bệnh nhân Nguyễn Văn A';
+                sidebar.innerHTML = `<div class="p-4 bg-blue-900/20 rounded-2xl border border-blue-500/20">
+                    <p class="text-xs font-bold text-blue-400">CHÀO BẠN!</p>
+                    <p class="text-[10px] text-slate-400 mt-2">Dữ liệu của bạn đang được chia sẻ với bác sỹ điều trị theo tiêu chuẩn WHO.</p>
+                </div>`;
+                actions.innerHTML = `<button onclick="openVision()" class="bg-purple-600 px-5 py-2 rounded-xl text-[10px] font-bold w-full"><i class="fas fa-camera mr-2"></i> CHỤP ẢNH BỮA ĂN</button>`;
+                loadPatient('Nguyễn Văn A');
+            }
+            else { // Admin
+                avatar.innerText = 'AD'; nameLabel.innerText = 'Quản trị hệ thống';
+                sidebar.innerHTML = `<div class="space-y-2">
+                    <div class="p-3 bg-slate-800 rounded-xl text-[10px] font-mono"><i class="fas fa-check-circle text-green-500 mr-2"></i> BLE Gateway: Active</div>
+                    <div class="p-3 bg-slate-800 rounded-xl text-[10px] font-mono"><i class="fas fa-check-circle text-green-500 mr-2"></i> HIS API: Handshake OK</div>
+                    <div class="p-3 bg-slate-800 rounded-xl text-[10px] font-mono"><i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i> Log: Unauthorized IP blocked</div>
+                </div>`;
+                document.getElementById('headerTitle').innerText = "System Administration";
+            }
+        }
+
+        function loadPatient(name) {
+            const p = patients[name];
+            document.getElementById('headerTitle').innerText = `Bệnh nhân: ${name}`;
+            document.getElementById('valMmol').innerText = p.mmol.toFixed(1);
+            document.getElementById('valMgdl').innerText = `${Math.round(p.mmol * 18)} mg/dL`;
+            document.getElementById('valHr').innerText = p.hr;
+            document.getElementById('foodName').innerText = p.food;
+            
+            updateAI(p.mmol, p.hr, p.food);
+            renderChart(p.gHistory, p.hrHistory);
+        }
+
+        function updateAI(mmol, hr, food) {
+            const card = document.getElementById('gluCard');
+            const mark = document.getElementById('watermark');
+            const aiTitle = document.getElementById('aiStatus');
+            const aiMsg = document.getElementById('aiMsg');
+
+            card.className = "glass-card p-6 rounded-3xl min-h-[170px] flex flex-col justify-between border-2 border-transparent transition-all";
+
+            if (mmol < 3.9) {
+                if (hr > 110) { 
+                    card.classList.add('border-blue-500'); mark.innerText = "VẬN ĐỘNG";
+                    aiTitle.innerText = "Lọc báo động"; aiTitle.className = "text-lg font-bold text-blue-400";
+                    aiMsg.innerText = "Hạ đường huyết sinh lý do vận động mạnh. Đã tự động lọc báo động giả.";
+                } else {
+                    card.classList.add('border-red-500', 'bg-red-900/10'); mark.innerText = "NGUY HIỂM";
+                    aiTitle.innerText = "CẢNH BÁO ĐỎ"; aiTitle.className = "text-lg font-bold text-red-500";
+                    aiMsg.innerText = "Hạ đường huyết cấp tính! Kích hoạt quy trình hỗ trợ y tế khẩn cấp.";
+                }
+            } else if (mmol > 10.0) {
+                if (food !== 'Chưa có') {
+                    card.classList.add('border-purple-500'); mark.innerText = "SAU ĂN";
+                    aiTitle.innerText = "Đỉnh sinh lý"; aiTitle.className = "text-lg font-bold text-purple-400";
+                    aiMsg.innerText = `Đường huyết tăng khớp với dữ liệu Vision AI (${food}). Đây là phản ứng sau ăn.`;
+                } else {
+                    card.classList.add('border-orange-500'); mark.innerText = "TĂNG CAO";
+                    aiTitle.innerText = "Cần theo dõi"; aiTitle.className = "text-lg font-bold text-orange-400";
+                    aiMsg.innerText = "Vượt ngưỡng an toàn WHO mà không ghi nhận bữa ăn. Bác sỹ cần kiểm tra.";
+                }
+            } else {
+                card.classList.add('border-green-500'); mark.innerText = "ỔN ĐỊNH";
+                aiTitle.innerText = "An toàn"; aiTitle.className = "text-lg font-bold text-green-400";
+                aiMsg.innerText = "Mọi chỉ số nằm trong dải mục tiêu lý tưởng.";
+            }
+        }
+
+        function renderChart(g, h) {
+            if (currentChart) currentChart.destroy();
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['-50p', '-40p', '-30p', '-20p', '-10p', 'LIVE'],
+                    datasets: [
+                        { label: 'CGM (mmol/L)', data: g, borderColor: '#3b82f6', tension: 0.4, fill: true, backgroundColor: 'rgba(59,130,246,0.1)' },
+                        { label: 'HR (BPM)', data: h, borderColor: '#ef4444', borderDash: [5, 5], yAxisID: 'y1', tension: 0.4 }
+                    ]
+                },
+                options: { scales: { y: { grid: { color: '#1e293b' } }, y1: { position: 'right', grid: { display: false } } } }
+            });
+        }
+
+        function openVision() {
+            document.getElementById('cameraUI').style.display = 'flex';
+            setTimeout(() => {
+                alert("Vision AI: Phát hiện Phở Bò - Carb ước tính: 75g. Đã cập nhật vào hồ sơ.");
+                closeVision();
+                patients['Nguyễn Văn A'].food = 'Phở Bò (75g Carb)';
+                patients['Nguyễn Văn A'].mmol = 12.2;
+                loadPatient('Nguyễn Văn A');
+            }, 3000);
+        }
+        function closeVision() { document.getElementById('cameraUI').style.display = 'none'; }
+        function pushHIS() { alert("OpenClaw: Toàn bộ dữ liệu (CGM, HR, Vision) đã được đóng gói HL7 FHIR và gửi sang HIS/LIS."); }
+
+        initRBAC('doctor');
+    </script>
+</body>
+</html>
